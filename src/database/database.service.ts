@@ -66,8 +66,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         partialFilterExpression: { kind: 'event', status: 'processed' },
       },
       {
-        key: { kind: 1, expiresAt: 1 },
-        name: 'ttl_patient_locks',
+        key: { expiresAt: 1 },
+        name: 'ttl_patient_lock_expiry',
         expireAfterSeconds: 0,
         partialFilterExpression: { kind: 'patient_lock', blocked: false },
       },

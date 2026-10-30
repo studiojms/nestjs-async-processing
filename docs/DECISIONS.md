@@ -27,3 +27,8 @@ Event and patient-lock documents share a collection and both use string `_id` va
 ## Durability is part of acceptance
 
 The client uses retryable writes and majority write acknowledgement. The API responds with `202` only after the event insert succeeds. An HTTP timeout can still leave the client uncertain whether the write committed; a retry with the same payload resolves that ambiguity through the fingerprint index.
+
+
+## TTL cleanup
+
+MongoDB TTL indexes must use a single indexed field. The patient-lock cleanup index therefore targets `expiresAt` only and uses a partial filter for `{ kind: 'patient_lock', blocked: false }`. It is cleanup, not lease correctness: workers always check `expiresAt` in the lock query, and blocked locks have no expiry and are never removed by TTL.
