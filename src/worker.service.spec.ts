@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { WorkerService } from './worker.service';
 import { DatabaseService } from './database/database.service';
 import { ClaimedEvent, EventDocument } from './common/event';
@@ -79,6 +80,8 @@ describe('WorkerService', () => {
       deleteOne: jest.fn().mockResolvedValue({ deletedCount: 1 }),
     };
     const service = new WorkerService({ events: collection } as unknown as DatabaseService);
+    const logger = (service as unknown as { logger: Logger }).logger;
+    const log = jest.spyOn(logger, 'log').mockImplementation(() => undefined);
     const claim: ClaimedEvent = {
       event: {
         _id: 'event-1',
@@ -113,6 +116,9 @@ describe('WorkerService', () => {
     );
     expect(collection.deleteOne).toHaveBeenCalledWith(
       expect.objectContaining({ _id: 'patient:patient-1', lockToken: 'lock-1' }),
+    );
+    expect(log).toHaveBeenCalledWith(
+      'Processed event event-1 (type="observation", attempt=1)',
     );
   });
 

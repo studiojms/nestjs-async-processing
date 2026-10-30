@@ -229,8 +229,7 @@ async function main(): Promise<void> {
   })();
 
   const send = (event: PatientEvent): void => {
-    let task: Promise<void>;
-    task = (async () => {
+    const task = (async () => {
       const requestStarted = Date.now();
       try {
         const response = await fetch(`${options.baseUrl}/events`, {

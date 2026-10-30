@@ -30,6 +30,7 @@ services:
       LOCK_LEASE_MS: ${LOCK_LEASE_MS:-30000}
       MAX_ATTEMPTS: ${MAX_ATTEMPTS:-5}
       PROCESSING_DELAY_MS: ${PROCESSING_DELAY_MS:-0}
+      WORKER_LOG_PROCESSED: ${WORKER_LOG_PROCESSED:-true}
     depends_on:
       mongo: { condition: service_healthy }
     deploy:

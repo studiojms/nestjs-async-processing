@@ -27,6 +27,7 @@ export class WorkerService implements OnApplicationBootstrap, OnApplicationShutd
   private readonly pollMs = Number(process.env.WORKER_POLL_MS ?? 100);
   private readonly leaseMs = Number(process.env.LOCK_LEASE_MS ?? 30_000);
   private readonly maxAttempts = Number(process.env.MAX_ATTEMPTS ?? 5);
+  private readonly logProcessedEvents = process.env.WORKER_LOG_PROCESSED !== 'false';
   private readonly active = new Set<Promise<void>>();
   private stopping = false;
   private loop?: Promise<void>;
@@ -57,8 +58,7 @@ export class WorkerService implements OnApplicationBootstrap, OnApplicationShutd
           if (!claim) break;
 
           claimed = true;
-          let task: Promise<void>;
-          task = this.process(claim)
+          const task = this.process(claim)
             .catch((error: unknown) => {
               this.logger.error(`Worker task failed: ${this.errorName(error)}`);
             })
@@ -273,7 +273,13 @@ export class WorkerService implements OnApplicationBootstrap, OnApplicationShutd
           $unset: { leaseOwner: '', leaseUntil: '', claimToken: '' },
         },
       );
-      if (result.modifiedCount !== 1) this.logger.warn('A stale worker could not complete its claim');
+      if (result.modifiedCount !== 1) {
+        this.logger.warn('A stale worker could not complete its claim');
+      } else if (this.logProcessedEvents) {
+        this.logger.log(
+          `Processed event ${claim.event._id} (type=${JSON.stringify(claim.event.type)}, attempt=${claim.event.attempts})`,
+        );
+      }
     } catch (error) {
       await this.fail(claim, error);
     } finally {

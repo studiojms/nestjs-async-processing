@@ -45,7 +45,7 @@ A worker repeatedly:
 4. Reads the patient's earliest unresolved event, ordered by `eventTime` and then fingerprint. It does not skip an earlier event just because a later event is ready.
 5. Atomically changes that event to `processing`, increments `attempts`, and writes a claim token and lease expiry.
 6. Simulates the downstream work using `PROCESSING_DELAY_MS`, then marks the event `processed` only when its claim token still matches.
-7. Releases the patient lock. A heartbeat renews both leases while work is running.
+7. Logs the successfully completed event ID, type, and attempt number, then releases the patient lock. A heartbeat renews both leases while work is running.
 
 Different patients can be processed concurrently, up to `WORKER_CONCURRENCY` per worker process. A single patient's stream remains serial by design. Adding workers increases throughput across patients, not within one hot patient's ordered stream.
 
@@ -119,7 +119,13 @@ cp .env.example .env
 docker compose up --build --scale worker=3
 ```
 
-The API listens on `http://localhost:3000`.
+The API listens on `http://localhost:3000`. Follow worker output in a separate terminal with `docker compose logs -f worker` (this is a separate container from the API). The worker writes one concise log line for each successfully processed event, for example:
+
+```text
+[Nest] LOG [WorkerService] Processed event 8f... (type=\"observation\", attempt=1)
+```
+
+The event payload and patient ID are deliberately omitted from logs. For high-throughput benchmarks, disable per-event logging with `WORKER_LOG_PROCESSED=false`; console output can otherwise become a throughput bottleneck.
 
 ```bash
 curl -i http://localhost:3000/events \
@@ -191,6 +197,7 @@ The unit tests cover canonical fingerprints, request validation, duplicate inges
 | `LOCK_LEASE_MS` | `30000` | Patient and event lease duration |
 | `MAX_ATTEMPTS` | `5` | Attempts before dead-lettering |
 | `PROCESSING_DELAY_MS` | `0` | Artificial processing delay for experiments |
+| `WORKER_LOG_PROCESSED` | `true` | Log each successfully processed event; disable for throughput benchmarks |
 
 The MongoDB client uses retryable writes and majority acknowledgement for accepted events. Connection pools are per process: total potential connections are approximately `(API replicas + worker replicas) × MONGO_POOL_SIZE`, so tune pool size and replica count together.
 
