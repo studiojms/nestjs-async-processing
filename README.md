@@ -108,7 +108,7 @@ Indexes are created at startup:
 | Processing status + `leaseUntil` | Recover abandoned claims |
 | Patient + `eventTime` + fingerprint | Read the unresolved stream head |
 | Patient + descending `eventTime` + fingerprint | Find the processed cursor |
-| TTL on unblocked patient lock expiry | Remove abandoned lock documents after their lease |
+| Single-field TTL on unblocked patient-lock `expiresAt` | Clean up expired lease documents; blocked locks are excluded |
 
 ## Run locally
 
@@ -129,6 +129,36 @@ curl -i http://localhost:3000/events \
 
 `GET /health` checks database connectivity. `GET /stats` reports event counts by state, including events requiring reconciliation.
 
+### Generate test traffic
+
+Run the generator from the project root on the host after `npm install`; it sends requests to the API at `http://localhost:3000` by default. It uses the same four-field event contract as a real client, checks API health first, posts at a target rate, samples `/stats`, waits for pending and processing events to drain, and prints a JSON summary with HTTP status counts, duplicate behavior, request latency percentiles, achieved rate, queue observations, dead letters, and reconciliation events.
+
+```bash
+# 100,000 events, offered at 500 requests/second
+npm run load:events -- --count=100000 --rate=500 --patients=10000 --max-in-flight=300
+
+# Include 10% exact duplicate payloads
+npm run load:events -- --count=100000 --rate=500 --duplicate-ratio=0.1
+```
+
+Useful controls include `--patients`, `--duplicate-ratio`, `--disorder-ms`, `--seed`, `--max-in-flight`, and `--drain-timeout-seconds`. The generator keeps at most 10,000 event samples for duplicate requests and 20,000 latency samples; in-flight HTTP requests are capped by `--max-in-flight`, so its memory use does not grow with the total request count. New event payloads include a sequence value to keep generated events distinct.
+
+`--disorder-ms` intentionally moves event timestamps both forward and backward. This can create late events and put patient streams into `needs_reconciliation`; use it only when testing that behavior on a disposable dataset. A queue is considered drained when `pending` and `processing` reach zero. `dead_letter` and `needs_reconciliation` are still included in the final report because they require intervention even though they are no longer active work.
+
+The target rate is an offer rate, not a throughput guarantee. If the HTTP concurrency cap is reached, the generator waits for a request to finish and reports the achieved rate. Start with a modest count and rate, then increase them while observing API latency and MongoDB resource use.
+
+| Option | Default | Purpose |
+|---|---:|---|
+| `--count` | `1000` | Total HTTP requests |
+| `--rate` | `17` | Target requests per second |
+| `--patients` | `500` | Patient ID cardinality |
+| `--duplicate-ratio` | `0` | Fraction of requests that reuse an earlier exact payload |
+| `--disorder-ms` | `0` | Maximum timestamp offset in either direction |
+| `--max-in-flight` | `500` | Bound on concurrent HTTP requests |
+| `--seed` | `42` | Reproducible event generation |
+
+To see all options, run `npm run load:events -- --help`.
+
 To stop the stack:
 
 ```bash
@@ -143,10 +173,11 @@ Use `docker compose down -v` only when you also want to delete the local MongoDB
 npm install
 npm test
 npm run lint
+npm run typecheck
 npm run build
 ```
 
-The unit tests cover canonical fingerprints, request validation, duplicate ingestion (including concurrent duplicate inserts), worker startup timing, and event ordering. The tests do not require a running MongoDB instance. The application and worker require MongoDB when run.
+The unit tests cover canonical fingerprints, request validation, duplicate ingestion (including concurrent duplicate inserts), worker startup timing, event ordering, and load-generator argument/event generation. The tests do not require a running MongoDB instance. The application and worker require MongoDB when run.
 
 ## Configuration
 
