@@ -11,8 +11,9 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage --runInBand",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint \"{src,test}/**/*.ts\"",
-    "format": "prettier --write \"{src,test}/**/*.ts\""
+    "lint": "eslint \"{src,test,scripts}/**/*.ts\"",
+    "format": "prettier --write \"{src,test,scripts}/**/*.ts\"",
+    "load:events": "ts-node scripts/load-events.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.0",
