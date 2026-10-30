@@ -12,10 +12,11 @@ services:
   api:
     build: .
     command: ["node", "dist/main.js"]
-    ports: ["3000:3000"]
+    ports: ["${PORT:-3000}:${PORT:-3000}"]
     environment:
       MONGODB_URI: mongodb://mongo:27017/patient_events
-      PORT: 3000
+      PORT: ${PORT:-3000}
+      MONGO_POOL_SIZE: ${MONGO_POOL_SIZE:-50}
     depends_on:
       mongo: { condition: service_healthy }
   worker:
@@ -23,9 +24,12 @@ services:
     command: ["node", "dist/worker.js"]
     environment:
       MONGODB_URI: mongodb://mongo:27017/patient_events
-      WORKER_POLL_MS: 100
-      LOCK_LEASE_MS: 30000
-      PROCESSING_DELAY_MS: 5000
+      MONGO_POOL_SIZE: ${MONGO_POOL_SIZE:-50}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-10}
+      WORKER_POLL_MS: ${WORKER_POLL_MS:-100}
+      LOCK_LEASE_MS: ${LOCK_LEASE_MS:-30000}
+      MAX_ATTEMPTS: ${MAX_ATTEMPTS:-5}
+      PROCESSING_DELAY_MS: ${PROCESSING_DELAY_MS:-0}
     depends_on:
       mongo: { condition: service_healthy }
     deploy:
