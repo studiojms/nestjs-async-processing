@@ -5,7 +5,7 @@ import { DatabaseService } from './database/database.service';
 export class HealthController {
   constructor(private readonly database: DatabaseService) {}
   @Get('health') async health() {
-    await this.database.events.database?.command({ ping: 1 });
+    await this.database.events.countDocuments({ kind: 'event' }, { limit: 1 });
     return { status: 'ok' };
   }
   @Get('stats') async stats() {

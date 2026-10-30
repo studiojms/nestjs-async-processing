@@ -15,7 +15,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     const db = this.client.db();
     this.events = db.collection('events');
     await this.events.createIndex({ kind: 1, fingerprint: 1 }, { unique: true, partialFilterExpression: { kind: 'event' } });
-    await this.events.createIndex({ kind: 1, patientId: 1, status: 1, ts: 1 });
+    await this.events.createIndex({ kind: 1, status: 1, availableAt: 1, createdAt: 1 });
+    await this.events.createIndex({ kind: 1, patientId: 1, status: 1, ts: 1, fingerprint: 1 });
     await this.events.createIndex({ kind: 1, expiresAt: 1 }, { expireAfterSeconds: 0, partialFilterExpression: { kind: 'patient_lock' } });
   }
 

@@ -9,8 +9,8 @@
     "start:dev": "nest start --watch",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
-    "lint": "eslint "{src,test}/**/*.ts"",
-    "format": "prettier --write "{src,test}/**/*.ts""
+    "lint": "eslint \"{src,test}/**/*.ts\"",
+    "format": "prettier --write \"{src,test}/**/*.ts\""
   },
   "dependencies": {
     "@nestjs/common": "^11.1.0",

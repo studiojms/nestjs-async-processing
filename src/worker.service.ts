@@ -29,7 +29,10 @@ export class WorkerService implements OnApplicationBootstrap, OnModuleDestroy {
   private async processOnePatient(): Promise<boolean> {
     const now = new Date();
     const candidate = await this.database.events.findOne(
-      { kind: 'event', status: 'pending', availableAt: { $lte: now } },
+      { kind: 'event', $or: [
+        { status: 'pending', availableAt: { $lte: now } },
+        { status: 'processing', leaseUntil: { $lte: now } },
+      ] },
       { sort: { createdAt: 1 }, projection: { patientId: 1 } },
     );
     if (!candidate?.patientId) return false;
@@ -45,19 +48,33 @@ export class WorkerService implements OnApplicationBootstrap, OnModuleDestroy {
     });
     if (!lock) return false;
 
+    let claimedId: string | undefined;
+    let attempts = 0;
     try {
       const event = await this.database.events.findOneAndUpdate(
-        { kind: 'event', patientId: candidate.patientId, status: 'pending', availableAt: { $lte: new Date() } },
+        { kind: 'event', patientId: candidate.patientId, $or: [
+          { status: 'pending', availableAt: { $lte: new Date() } },
+          { status: 'processing', leaseUntil: { $lte: new Date() } },
+        ] },
         { $set: { status: 'processing', leaseUntil: new Date(Date.now() + this.leaseMs) }, $inc: { attempts: 1 } },
         { sort: { ts: 1, fingerprint: 1 }, returnDocument: 'after' },
       );
       if (!event) return false;
+      claimedId = String(event._id);
+      attempts = Number(event.attempts ?? 1);
 
       await new Promise((resolve) => setTimeout(resolve, Number(process.env.PROCESSING_DELAY_MS ?? 5000)));
       await this.database.events.updateOne({ _id: event._id, status: 'processing' }, { $set: { status: 'processed' }, $unset: { leaseUntil: '' } });
       return true;
     } catch (error) {
       this.logger.error(`Failed patient ${candidate.patientId}`, error instanceof Error ? error.stack : String(error));
+      if (claimedId) {
+        const exhausted = attempts >= 5;
+        await this.database.events.updateOne(
+          { _id: claimedId, status: 'processing' },
+          { $set: exhausted ? { status: 'dead_letter' } : { status: 'pending', availableAt: new Date(Date.now() + 1000 * 2 ** (attempts - 1)) }, $unset: { leaseUntil: '' } },
+        );
+      }
       return true;
     } finally {
       await this.database.events.deleteOne({ _id: lockId, owner: this.owner });

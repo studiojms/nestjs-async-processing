@@ -14,7 +14,7 @@ The API validates the body, calculates a SHA-256 fingerprint of canonical JSON, 
 
 ## Processing model
 
-MongoDB is both the durable queue and coordination store; this exercise intentionally adds no broker. The `events` collection contains event documents and short-lived patient lease documents. A worker obtains a lease for one patient, then atomically claims that patient's earliest eligible event. Different patients can progress concurrently; one patient's events are serialized. Expired leases and processing claims can be recovered by another worker. Transient errors are retried with a bounded attempt count; exhausted events are marked `dead_letter` and stop that patient's stream.
+MongoDB is both the durable queue and coordination store; this exercise intentionally adds no broker. The `events` collection contains event documents and short-lived patient lease documents. A worker obtains a lease for one patient, then atomically claims that patient's earliest eligible event. Different patients can progress concurrently; one patient's events are serialized. Expired leases and processing claims can be recovered by another worker. A failed operation is retried with exponential delay up to five attempts; exhausted events are marked `dead_letter`.
 
 This is a simple benchmarkable baseline, not a claim that MongoDB polling is the right billion-events/day architecture. At that scale, partitioned durable messaging (for example Kafka) and partition keys based on `patientId` are usually the more natural design. The exercise keeps MongoDB as the only durable component so the ingestion and coordination behavior can be measured without introducing broker operations.
 
