@@ -51,6 +51,9 @@ export class WorkerService implements OnApplicationBootstrap, OnModuleDestroy {
     let claimedId: string | undefined;
     let attempts = 0;
     try {
+      const deadLetter = await this.database.events.findOne({ kind: 'event', patientId: candidate.patientId, status: 'dead_letter' });
+      if (deadLetter) return false;
+
       const event = await this.database.events.findOneAndUpdate(
         { kind: 'event', patientId: candidate.patientId, $or: [
           { status: 'pending', availableAt: { $lte: new Date() } },
