@@ -28,59 +28,64 @@ export class WorkerService implements OnApplicationBootstrap, OnModuleDestroy {
 
   private async processOnePatient(): Promise<boolean> {
     const now = new Date();
-    const candidate = await this.database.events.findOne(
+    const candidates = await this.database.events.find(
       { kind: 'event', $or: [
         { status: 'pending', availableAt: { $lte: now } },
         { status: 'processing', leaseUntil: { $lte: now } },
       ] },
-      { sort: { createdAt: 1 }, projection: { patientId: 1 } },
-    );
-    if (!candidate?.patientId) return false;
+      { projection: { patientId: 1 } },
+    ).sort({ createdAt: 1 }).limit(50).toArray();
 
-    const lockId = `patient:${candidate.patientId}`;
-    const lock = await this.database.events.findOneAndUpdate(
-      { _id: lockId, $or: [{ expiresAt: { $lte: now } }, { owner: this.owner }] },
-      { $set: { kind: 'patient_lock', patientId: candidate.patientId, owner: this.owner, expiresAt: new Date(now.getTime() + this.leaseMs) } },
-      { upsert: true, returnDocument: 'after' },
-    ).catch((error: unknown) => {
-      if (error && typeof error === 'object' && 'code' in error && error.code === 11000) return null;
-      throw error;
-    });
-    if (!lock) return false;
-
-    let claimedId: string | undefined;
-    let attempts = 0;
-    try {
+    for (const candidate of candidates) {
+      if (!candidate.patientId) continue;
       const deadLetter = await this.database.events.findOne({ kind: 'event', patientId: candidate.patientId, status: 'dead_letter' });
-      if (deadLetter) return false;
+      if (deadLetter) continue;
 
-      const event = await this.database.events.findOneAndUpdate(
-        { kind: 'event', patientId: candidate.patientId, $or: [
-          { status: 'pending', availableAt: { $lte: new Date() } },
-          { status: 'processing', leaseUntil: { $lte: new Date() } },
-        ] },
-        { $set: { status: 'processing', leaseUntil: new Date(Date.now() + this.leaseMs) }, $inc: { attempts: 1 } },
-        { sort: { ts: 1, fingerprint: 1 }, returnDocument: 'after' },
-      );
-      if (!event) return false;
-      claimedId = String(event._id);
-      attempts = Number(event.attempts ?? 1);
+      const lockId = `patient:${candidate.patientId}`;
+      const lock = await this.database.events.findOneAndUpdate(
+        { _id: lockId, $or: [{ expiresAt: { $lte: now } }, { owner: this.owner }] },
+        { $set: { kind: 'patient_lock', patientId: candidate.patientId, owner: this.owner, expiresAt: new Date(now.getTime() + this.leaseMs) } },
+        { upsert: true, returnDocument: 'after' },
+      ).catch((error: unknown) => {
+        if (error && typeof error === 'object' && 'code' in error && error.code === 11000) return null;
+        throw error;
+      });
+      if (!lock) continue;
 
-      await new Promise((resolve) => setTimeout(resolve, Number(process.env.PROCESSING_DELAY_MS ?? 5000)));
-      await this.database.events.updateOne({ _id: event._id, status: 'processing' }, { $set: { status: 'processed' }, $unset: { leaseUntil: '' } });
-      return true;
-    } catch (error) {
-      this.logger.error(`Failed patient ${candidate.patientId}`, error instanceof Error ? error.stack : String(error));
-      if (claimedId) {
-        const exhausted = attempts >= 5;
-        await this.database.events.updateOne(
-          { _id: claimedId, status: 'processing' },
-          { $set: exhausted ? { status: 'dead_letter' } : { status: 'pending', availableAt: new Date(Date.now() + 1000 * 2 ** (attempts - 1)) }, $unset: { leaseUntil: '' } },
+      let claimedId: string | undefined;
+      let attempts = 0;
+      try {
+        const event = await this.database.events.findOneAndUpdate(
+          { kind: 'event', patientId: candidate.patientId, $or: [
+            { status: 'pending', availableAt: { $lte: new Date() } },
+            { status: 'processing', leaseUntil: { $lte: new Date() } },
+          ] },
+          { $set: { status: 'processing', leaseUntil: new Date(Date.now() + this.leaseMs) }, $inc: { attempts: 1 } },
+          { sort: { ts: 1, fingerprint: 1 }, returnDocument: 'after' },
         );
+        if (!event) continue;
+        claimedId = String(event._id);
+        attempts = Number(event.attempts ?? 1);
+
+        await new Promise((resolve) => setTimeout(resolve, Number(process.env.PROCESSING_DELAY_MS ?? 5000)));
+        await this.database.events.updateOne(
+          { _id: event._id, status: 'processing' },
+          { $set: { status: 'processed' }, $unset: { leaseUntil: '' } },
+        );
+      } catch (error) {
+        this.logger.error(`Failed patient ${candidate.patientId}`, error instanceof Error ? error.stack : String(error));
+        if (claimedId) {
+          const exhausted = attempts >= 5;
+          await this.database.events.updateOne(
+            { _id: claimedId, status: 'processing' },
+            { $set: exhausted ? { status: 'dead_letter' } : { status: 'pending', availableAt: new Date(Date.now() + 1000 * 2 ** (attempts - 1)) }, $unset: { leaseUntil: '' } },
+          );
+        }
+      } finally {
+        await this.database.events.deleteOne({ _id: lockId, owner: this.owner });
       }
       return true;
-    } finally {
-      await this.database.events.deleteOne({ _id: lockId, owner: this.owner });
     }
+    return false;
   }
 }

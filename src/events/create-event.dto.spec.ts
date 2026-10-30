@@ -4,7 +4,7 @@ import { CreateEventDto } from './create-event.dto';
 
 describe('CreateEventDto', () => {
   it('accepts the four-field event contract', async () => {
-    const dto = plainToInstance(CreateEventDto, { patientId: 'p1', type: 'vital', data: {}, ts: 'now' });
+    const dto = plainToInstance(CreateEventDto, { patientId: 'p1', type: 'vital', data: {}, ts: '2026-10-30T12:00:00.000Z' });
     expect(await validate(dto)).toHaveLength(0);
   });
   it('rejects missing fields and invalid data', async () => {

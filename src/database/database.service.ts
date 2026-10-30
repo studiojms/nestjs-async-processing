@@ -1,11 +1,10 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { Collection, MongoClient } from 'mongodb';
-import { EventDocument } from '../common/event';
+import { Collection, Document, MongoClient } from 'mongodb';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   private client!: MongoClient;
-  events!: Collection<EventDocument | Record<string, unknown>>;
+  events!: Collection<Document>;
 
   async onModuleInit(): Promise<void> {
     this.client = new MongoClient(process.env.MONGODB_URI ?? 'mongodb://localhost:27017/patient_events', {

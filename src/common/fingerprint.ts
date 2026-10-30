@@ -7,7 +7,7 @@ function canonical(value: unknown): string {
     const entries = Object.entries(value).sort(([a], [b]) => a.localeCompare(b));
     return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(',')}}`;
   }
-  return JSON.stringify(value);
+  return JSON.stringify(value) ?? 'null';
 }
 
 export function fingerprint(event: PatientEvent): string {
