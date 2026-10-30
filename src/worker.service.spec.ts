@@ -161,6 +161,49 @@ describe('WorkerService', () => {
     expect(collection.deleteOne).toHaveBeenCalledTimes(1);
   });
 
+  it('moves an event to dead_letter after the configured attempt limit', async () => {
+    const collection = {
+      updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
+      deleteOne: jest.fn().mockResolvedValue({ deletedCount: 1 }),
+    };
+    const service = new WorkerService({ events: collection } as unknown as DatabaseService);
+    const claim: ClaimedEvent = {
+      event: {
+        _id: 'event-4',
+        kind: 'event',
+        patientId: 'patient-4',
+        type: 'observation',
+        data: {},
+        ts: '2026-10-30T12:00:00.000Z',
+        eventTime: new Date(),
+        fingerprint: 'fingerprint-4',
+        status: 'processing',
+        attempts: 5,
+        availableAt: new Date(),
+        createdAt: new Date(),
+        claimToken: 'claim-4',
+      },
+      patientLockId: 'patient:patient-4',
+      lockToken: 'lock-4',
+      claimToken: 'claim-4',
+    };
+    const internals = service as unknown as {
+      process: (value: ClaimedEvent) => Promise<void>;
+      sleep: (ms: number) => Promise<void>;
+    };
+    internals.sleep = jest.fn().mockRejectedValue(new Error('processing failed'));
+
+    await internals.process.call(service, claim);
+
+    expect(collection.updateOne).toHaveBeenCalledWith(
+      expect.objectContaining({ _id: 'event-4', claimToken: 'claim-4' }),
+      expect.objectContaining({
+        $set: { status: 'dead_letter' },
+        $unset: expect.objectContaining({ claimToken: '' }),
+      }),
+    );
+  });
+
   it('renews the patient and event leases with their fencing tokens', async () => {
     const collection = {
       updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
