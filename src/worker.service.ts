@@ -28,15 +28,18 @@ export class WorkerService implements OnApplicationBootstrap, OnModuleDestroy {
 
   private async processOnePatient(): Promise<boolean> {
     const now = new Date();
-    const candidates = await this.database.events.find(
+    let offset = 0;
+    while (this.running) {
+      const candidates = await this.database.events.find(
       { kind: 'event', $or: [
         { status: 'pending', availableAt: { $lte: now } },
         { status: 'processing', leaseUntil: { $lte: now } },
       ] },
       { projection: { patientId: 1 } },
-    ).sort({ createdAt: 1 }).limit(50).toArray();
+      ).sort({ createdAt: 1 }).skip(offset).limit(50).toArray();
+      if (candidates.length === 0) return false;
 
-    for (const candidate of candidates) {
+      for (const candidate of candidates) {
       if (!candidate.patientId) continue;
       const deadLetter = await this.database.events.findOne({ kind: 'event', patientId: candidate.patientId, status: 'dead_letter' });
       if (deadLetter) continue;
@@ -84,7 +87,9 @@ export class WorkerService implements OnApplicationBootstrap, OnModuleDestroy {
       } finally {
         await this.database.events.deleteOne({ _id: lockId, owner: this.owner });
       }
-      return true;
+        return true;
+      }
+      offset += candidates.length;
     }
     return false;
   }
